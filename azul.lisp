@@ -4,17 +4,20 @@
 (defmacro register-bt-generics (fn-name-list functions)
   (append '(progn)
           (list `(defparameter ,fn-name-list nil))
-    (loop for line in functions
-          collect
-          (destructuring-bind (fn-name fn-param-list fn-docstring) line
-            `(progn
-               (defgeneric ,fn-name (backend ,@fn-param-list) (:documentation ,fn-docstring))
-               (setf ,fn-name-list (append ,fn-name-list (list ',fn-name))))))
-    ))
+          (loop for line in functions
+                collect
+                (destructuring-bind (fn-name fn-param-list fn-docstring) line
+                  (let ((bt-fn-name (intern (concatenate 'string "BT-" (string fn-name)))))
+                    `(progn
+                       (defgeneric ,bt-fn-name (backend ,@fn-param-list)
+                         (:documentation ,fn-docstring))
+                       (setf ,fn-name-list (append ,fn-name-list (list ',bt-fn-name)))))))
+          ))
 
-;; (register-bt-generics *fn-list*
+;; Some testing
+;; (macroexpand '(register-bt-generics *fn-list*
 ;;   ((id-create (&key bt-addr) "Create a Bluetooth identity.")
-;;    (id-reset (id &key bt-addr) "Reset an identity.")))
+;;    (id-reset (id &key bt-addr) "Reset an identity."))))
 
 ;; Will create generic functions based on this.
 ;; Also pass device instance as first param.
@@ -86,9 +89,15 @@
    ))
 
 (defun get-fn-idx (fn-name-list name)
-  ;; TODO: get function index in list
-  ;; used for RPC
-  )
+  ;; Get RPC fn index
+  (loop for el in fn-name-list
+        counting t into idx
+        when (eql el name) do (return (1- idx))))
+
+;; (nth (get-fn-idx *fn-list* 'bt-connect) *fn-list*)
+
+(defclass zephyr-host () nil)
+;; (defparameter *zephyr-host-inst* (make-instance 'zephyr-host))
 
 ;; Zephyr host RPC-ish backend
 (defmethod id-create (type zephyr-host) (&key bt-addr)
