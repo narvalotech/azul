@@ -100,5 +100,48 @@
 ;; (defparameter *zephyr-host-inst* (make-instance 'zephyr-host))
 
 ;; Zephyr host RPC-ish backend
-(defmethod id-create (type zephyr-host) (&key bt-addr)
-  (format t "id-create"))
+(defmethod bt-id-create ((type zephyr-host) &key bt-addr)
+  (format t "id-create [~a] ~a"
+          (get-fn-idx *fn-list* 'bt-connect)
+          bt-addr))
+
+;; (bt-id-create *zephyr-host-inst* :bt-addr "randomaddress")
+
+(defclass bt-addr ()
+    ((addr :initarg :addr :accessor bt-addr :initform "00:00:00:00:00:00")
+     (type :initarg :type :accessor bt-addr-type :initform 'random)))
+
+;; (make-instance 'bt-addr :addr "FF:EE:DD:00:11:22" :type 'public)
+
+(ql:quickload "usocket")
+
+;; Open netcat before running this.
+;; It's non-blocking if run through sly/ime, but will only return the conn
+;; object whenever a client is connected.
+(defun create-server-and-send-stuff ()
+  (defparameter *server-socket* (usocket:socket-listen "127.0.0.1" 42069 :reuse-address t))
+  (defparameter *server-conn* (usocket:socket-accept *server-socket* :element-type 'character))
+  (print *server-socket*)
+  (print *server-conn*)
+
+  (format (usocket:socket-stream *server-conn*) "Hello World~%")
+  (force-output (usocket:socket-stream *server-conn*))
+  (sleep 2)
+  (format (usocket:socket-stream *server-conn*) "Hola~%")
+  (force-output (usocket:socket-stream *server-conn*))
+
+  (usocket:socket-close *server-conn*)
+  (usocket:socket-close *server-socket*)
+  )
+
+(create-server-and-send-stuff)
+
+(defun create-client (port)
+  (usocket:with-client-socket (socket stream "127.0.0.1" port :element-type 'character)
+    (unwind-protect
+         (progn
+           (usocket:wait-for-input socket)
+           (format t "Input is: ~a~%" (read-line stream)))
+      (usocket:socket-close socket))))
+
+(create-client 42069)
