@@ -115,33 +115,31 @@
 
 (ql:quickload "usocket")
 
-;; Open netcat before running this.
-;; It's non-blocking if run through sly/ime, but will only return the conn
-;; object whenever a client is connected.
-(defun create-server-and-send-stuff ()
-  (defparameter *server-socket* (usocket:socket-listen "127.0.0.1" 42069 :reuse-address t))
-  (defparameter *server-conn* (usocket:socket-accept *server-socket* :element-type 'character))
-  (print *server-socket*)
-  (print *server-conn*)
+(defun create-server-and-listen (port)
+  (format t "Opening backend on port ~a...~%" port)
+  (usocket:with-socket-listener (server-socket "127.0.0.1" port :reuse-address t)
+    (usocket:wait-for-input server-socket)
+    (usocket:with-connected-socket (server-conn (usocket:socket-accept server-socket))
+      (let ((server-stream (usocket:socket-stream server-conn)))
+        (format t "Client connected~%")
+        (handler-case
+            (loop
+              (format t "~A~%" (read-line server-stream)))
+          (end-of-file (c)
+            (format t "Client disconnected, exiting backend~%")
+            (values 0 c))
+          )))))
 
-  (format (usocket:socket-stream *server-conn*) "Hello World~%")
-  (force-output (usocket:socket-stream *server-conn*))
-  (sleep 2)
-  (format (usocket:socket-stream *server-conn*) "Hola~%")
-  (force-output (usocket:socket-stream *server-conn*))
-
-  (usocket:socket-close *server-conn*)
-  (usocket:socket-close *server-socket*)
-  )
-
-(create-server-and-send-stuff)
+;; Can use netcat to talk to it:
+;; nc 127.0.0.1 42069
+(create-server-and-listen 42069)
 
 (defun create-client (port)
   (usocket:with-client-socket (socket stream "127.0.0.1" port :element-type 'character)
-    (unwind-protect
-         (progn
-           (usocket:wait-for-input socket)
-           (format t "Input is: ~a~%" (read-line stream)))
-      (usocket:socket-close socket))))
+    (loop repeat 3 do
+      (progn
+        (format stream "Hello World~%")
+        (force-output stream))
+      )))
 
 (create-client 42069)
