@@ -96,22 +96,22 @@
 
 ;; (nth (get-fn-idx *fn-list* 'bt-connect) *fn-list*)
 
+;; Zephyr host RPC-ish backend
 (defclass zephyr-host () nil)
 ;; (defparameter *zephyr-host-inst* (make-instance 'zephyr-host))
-
-;; Zephyr host RPC-ish backend
-(defmethod bt-id-create ((type zephyr-host) &key bt-addr)
-  (format t "id-create [~a] ~a"
-          (get-fn-idx *fn-list* 'bt-connect)
-          bt-addr))
-
-;; (bt-id-create *zephyr-host-inst* :bt-addr "randomaddress")
 
 (defclass bt-addr ()
     ((addr :initarg :addr :accessor bt-addr :initform "00:00:00:00:00:00")
      (type :initarg :type :accessor bt-addr-type :initform 'random)))
 
 ;; (make-instance 'bt-addr :addr "FF:EE:DD:00:11:22" :type 'public)
+
+(defmethod bt-id-create ((type zephyr-host) &key bt-addr)
+  (format t "id-create [~a] ~a"
+          (get-fn-idx *fn-list* 'bt-connect)
+          bt-addr))
+
+;; (bt-id-create *zephyr-host-inst* :bt-addr "randomaddress")
 
 (ql:quickload "usocket")
 
