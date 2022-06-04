@@ -235,3 +235,41 @@ Proof of concept:
         - param [conn-param]
 
 - Dump GATT db & display in list
+
+
+Event parsing:
+
+- read name of event based on idx
+- read paramlist:
+  - create list with:
+    - name
+    - value
+    - class instance (if class exists) (see note)
+
+return list:
+'event' -> indicates this is an event transfer from the backend
+event name
+name-type-value lists for each param
+- if type names a complex data class:
+  -> list all slots in alphabetical order, e.g.
+
+``` common-lisp
+(event connected (conn 'conn #x3 #x20001234 0)) ;; 'idx comes before 'mem
+(event something-something-address (addr 'bt-addr '(#x00 #xFF #x33 #x22 #x11) 'public))
+```
+
+
+Misc notes
+----------
+
+data classes
+------------
+We should auto-populate other fields based on given data:
+
+e.g. Instantiating an HCI error class w/ only the numeric value should
+automatically populate the name field with the corresponding error name.
+
+The reverse should also be true: instantiating the same class with just the
+error name should automatically populate the value.
+
+Should be pretty useful for HCI evts and GATT values.
