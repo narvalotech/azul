@@ -92,10 +92,14 @@
 (defparameter *backend-inst* (make-instance 'zephyr-host))
 
 (defclass bt-addr ()
-    ((addr :initarg :addr :accessor bt-addr :initform '(00 00 00 00 00 00))
-     (type :initarg :type :accessor bt-addr-type :initform 'random)))
+    ((addr :initarg :addr :initform '(00 00 00 00 00 00))
+     (type :initarg :type :initform 'random)))
 
-;; (make-instance 'bt-addr :addr '(#xFF #xEE #xDD #x00 #x11 #x22) :type 'public)
+;; (defparameter *test-inst* (make-instance 'bt-addr :addr '(#xFF #xEE #xDD #x00 #x11 #x22) :type 'public))
+;; (format t "~S~%" *test-inst*)
+;; (with-slots (addr type) *test-inst*
+;;   (print addr)
+;;   (print type))
 
 (defmethod bt-id-create ((type zephyr-host) &key bt-addr)
   ;; TODO: serialize into 'serial' buffer
