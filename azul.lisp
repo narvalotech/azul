@@ -42,6 +42,42 @@
 
   ))
 
+(register-bt-events
+ *evt-list*
+ (
+  ;; Scan
+  (scan-device-report ((addr 'bt-addr)
+                       (sid 'u8)
+                       (rssi 'i8)
+                       (tx-power 'i8)
+                       (adv-type 'u8)
+                       (adv-props 'u16)
+                       (interval 'u16)
+                       (primary-phy 'u8)
+                       (secondary-phy 'u8)
+                       (adv-data 'bt-adv-data)))
+  (scan-timeout ())
+
+  ;; Connections
+  (connected ((conn 'bt-conn)
+              (err 'hci-error)))
+  (disconnected ((conn 'bt-conn)
+                 (reason 'hci-error)))
+  (param-updated ((conn 'bt-conn)
+                  (param 'bt-conn-params)))
+  (conn-remote-info ((conn 'conn)
+                     (remote-info 'remote-info)))
+  (phy-updated ((conn 'bt-conn)
+                (phy-info 'phy-info)))
+  (data-length-updated ((conn 'bt-conn)
+                        (data-len-info 'data-len-info)))
+  (connection-info ((conn 'bt-conn)
+                    (type 'u8)
+                    (role 'u8)
+                    (id 'u8)
+                    (conn-le-info 'conn-le-info)))
+  ))
+
 (defun get-idx-by-name (name-list name)
   ;; Get function or event index in list
   (loop for el in name-list
