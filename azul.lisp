@@ -53,13 +53,13 @@
 
 ;; Zephyr host RPC-ish backend
 (defclass zephyr-host () nil)
-;; (defparameter *zephyr-host-inst* (make-instance 'zephyr-host))
+(defparameter *backend-inst* (make-instance 'zephyr-host))
 
 (defclass bt-addr ()
-    ((addr :initarg :addr :accessor bt-addr :initform "00:00:00:00:00:00")
+    ((addr :initarg :addr :accessor bt-addr :initform '(00 00 00 00 00 00))
      (type :initarg :type :accessor bt-addr-type :initform 'random)))
 
-;; (make-instance 'bt-addr :addr "FF:EE:DD:00:11:22" :type 'public)
+;; (make-instance 'bt-addr :addr '(#xFF #xEE #xDD #x00 #x11 #x22) :type 'public)
 
 (defmethod bt-id-create ((type zephyr-host) &key bt-addr)
   ;; TODO: serialize into 'serial' buffer
@@ -67,7 +67,19 @@
           (get-idx-by-name *fn-list* 'bt-id-create)
           bt-addr))
 
-;; (bt-id-create *zephyr-host-inst* :bt-addr "randomaddress")
+(defmethod bt-id-list ((type zephyr-host))
+  (format t "bt-id-list executed~%"))
+
+;; (bt-id-create *backend-inst* :bt-addr "randomaddress")
+
+;; For now only supports s-exps on a single line
+(defun parse-command (str)
+  (let ((cmd (read-from-string str)))
+    (eval (append (list (first cmd) *backend-inst*) (rest cmd)))))
+
+(defparameter *test-list* '(bt-id-create :bt-addr '((00 11 22 33 44 55) 'random)))
+(print *test-list*)
+(parse-command (format nil "~S" *test-list*))
 
 (ql:quickload "usocket")
 
@@ -80,7 +92,9 @@
         (format t "Client connected~%")
         (handler-case
             (loop
-              (format t "~A~%" (read-line server-stream)))
+              (let ((line (read-line server-stream)))
+              (format t "RX: ~A~%" line)
+              (parse-command line)))
           (end-of-file (c)
             (format t "Client disconnected, exiting backend~%")
             (values 0 c))
@@ -94,7 +108,7 @@
   (usocket:with-client-socket (socket stream "127.0.0.1" port :element-type 'character)
     (loop repeat 3 do
       (progn
-        (format stream "Hello World~%")
+        (format stream "~S~%" *test-list*)
         (force-output stream))
       )))
 
