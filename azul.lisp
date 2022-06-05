@@ -17,6 +17,40 @@
                        (setf ,fn-name-list (append ,fn-name-list (list ',bt-fn-name)))))))
           ))
 
+(defmacro register-bt-events (return-list input-list)
+  (append '(progn)
+          (list `(defparameter ,return-list nil))
+          (loop for event in input-list
+                collect
+                (destructuring-bind (evt-name param-list docstring) event
+                  `(setf ,return-list
+                         (append ,return-list
+                                 (list (list ',evt-name ',param-list ,docstring))))
+                  ))))
+
+(register-bt-events
+ *evt-list*
+ (
+  (scan-device-report ((addr bt-addr)
+                       (sid u8)
+                       (rssi i8)
+                       (tx-power i8)
+                       (adv-type u8)
+                       (adv-props u16)
+                       (interval u16)
+                       (primary-phy u8)
+                       (secondary-phy u8)
+                       (adv-data bt-adv-data))
+                      "Scan report")
+  (scan-timeout () "Scan timeout")
+  (connected ((conn bt-conn)
+              (err hci-error))
+             "Connection was successful.")
+  ))
+
+;; (equal 'err (car (nth 1 (nth 1 (nth 2 *evt-list*)))))
+;; (equal 'hci-error (nth 1 (nth 1 (nth 1 (nth 2 *evt-list*)))))
+
 ;; Some testing
 ;; (macroexpand '(register-bt-generics *fn-list*
 ;;   ((id-create (&key bt-addr) "Create a Bluetooth identity.")
@@ -58,27 +92,35 @@
                        (interval 'u16)
                        (primary-phy 'u8)
                        (secondary-phy 'u8)
-                       (adv-data 'bt-adv-data)))
-  (scan-timeout ())
+                       (adv-data 'bt-adv-data))
+                      "Scanned an advertiser.")
+  (scan-timeout () "Scanning has timed out.")
 
   ;; Connections
   (connected ((conn 'bt-conn)
-              (err 'hci-error)))
+              (err 'hci-error))
+             "Connection was successful.")
   (disconnected ((conn 'bt-conn)
-                 (reason 'hci-error)))
+                 (reason 'hci-error))
+                "Connection was not successful.")
   (param-updated ((conn 'bt-conn)
-                  (param 'bt-conn-params)))
+                  (param 'bt-conn-params))
+                 "Connection parameters were updated.")
   (conn-remote-info ((conn 'conn)
-                     (remote-info 'remote-info)))
+                     (remote-info 'remote-info))
+                    "Received information about the remote device.")
   (phy-updated ((conn 'bt-conn)
-                (phy-info 'phy-info)))
+                (phy-info 'phy-info))
+               "PHY has changed.")
   (data-length-updated ((conn 'bt-conn)
-                        (data-len-info 'data-len-info)))
+                        (data-len-info 'data-len-info))
+                       "Data length was updated.")
   (connection-info ((conn 'bt-conn)
                     (type 'u8)
                     (role 'u8)
                     (id 'u8)
-                    (conn-le-info 'conn-le-info)))
+                    (conn-le-info 'conn-le-info))
+                   "Received information about a given connection.")
   ))
 
 (defun get-idx-by-name (name-list name)
