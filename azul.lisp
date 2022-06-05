@@ -1,5 +1,8 @@
 ;; AZUL: Bluetooth test desktop application
 ;;
+(defun prepend-to-symbol (str sym)
+  (read-from-string (concatenate 'string str (string sym))))
+
 ;; Create generic backend functions from a list
 (defmacro register-bt-generics (fn-name-list functions)
   (append '(progn)
@@ -7,7 +10,7 @@
           (loop for line in functions
                 collect
                 (destructuring-bind (fn-name fn-param-list fn-docstring) line
-                  (let ((bt-fn-name (intern (concatenate 'string "BT-" (string fn-name)))))
+                  (let ((bt-fn-name (prepend-to-symbol "BT-" fn-name)))
                     `(progn
                        (defgeneric ,bt-fn-name (backend ,@fn-param-list)
                          (:documentation ,fn-docstring))
