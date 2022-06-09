@@ -190,7 +190,7 @@ Proof of concept:
   - events:
     - connected
       - conn [conn]
-        - mem [u32]
+        - ptr [u32]
         - idx [u8]
       - err [u8] / [hci-error]
     - disconnected
