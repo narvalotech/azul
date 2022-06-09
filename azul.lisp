@@ -183,40 +183,10 @@
 (create-client 42069)
 
 ;; Binary packing
-;; Returns either a byte array / vector
-(defgeneric encode-binary (type object)
+;; Returns a byte array / vector
+(defgeneric encode-binary (object)
   (:documentation "Encode a given object into binary.")
-  (:method (type value) (format nil "No encode method defined for given type: ~a." type)))
-
-(defmethod encode-binary ((type (eql 'u8)) object)
-  (vector (ldb (byte 8 0) object)))
-
-;; (encode-binary 'u8 123)
-
-(defparameter *bt-addr-types* '(:public 2
-                                :random 3))
-
-(defmethod encode-binary (type (object bt-addr))
-  (concatenate 'vector
-               (slot-value object 'addr)
-               (vector
-                (ldb (byte 8 0)
-                     (getf *bt-addr-types* (slot-value object 'type))))))
-
-;; (encode-binary 'bt-addr
-;;                (make-instance 'bt-addr
-;;                               :addr #(#xFF #xEE #xDD #x00 #x11 #x22)
-;;                               :type :public))
-
-;; TODO: set error name automatically
-(defclass hci-error ()
-  ((code :initarg :code :initform 0)
-   (name :initarg :name :initform "")))
-
-(defmethod encode-binary (type (object hci-error))
-  (vector (ldb (byte 8 0) (slot-value object 'code))))
-
-;; (encode-binary 'hci-error (make-instance 'hci-error :code 2))
+  (:method (value) (format nil "No encode method defined for given type: ~a." (type-of object))))
 
 (defun encode-le (bytes value)
    (loop for byte from 0 to (1- bytes) collect
@@ -225,29 +195,80 @@
 (defun lists->vector (&rest lists)
   (coerce (loop for l in lists nconc l) 'vector))
 
+(defmacro generate-encode-binary (int)
+  `(defmethod encode-binary ((object ,int))
+     (lists->vector (encode-le
+                     (slot-value object 'bytes)
+                     (slot-value object 'value)))))
+
+(defun make-int (class value)
+  (make-instance class :value value))
+
+(defclass u8 ()
+  ((value :initarg :value :initform 0)
+   (bytes :initarg :bytes :initform 1)))
+
+(generate-encode-binary u8)
+(encode-binary (make-int 'u8 123))
+
+(defclass i8 ()
+  ((value :initarg :value :initform 0)
+   (bytes :initarg :bytes :initform 1)))
+
+(generate-encode-binary i8)
+(encode-binary (make-int 'i8 -10))
+
+(defclass u16 ()
+  ((value :initarg :value :initform 0)
+   (bytes :initarg :bytes :initform 2)))
+
+(generate-encode-binary u16)
+(encode-binary (make-int 'u16 #xffab))
+
+(defparameter *bt-addr-types* '(:public 2
+                                :random 3))
+
+(defmethod encode-binary ((object bt-addr))
+  (with-slots (addr type) object
+    (concatenate 'vector
+                 (lists->vector addr)
+                 (encode-le 1 (getf *bt-addr-types* type)))))
+
+;; (encode-binary (make-instance 'bt-addr
+;;                               :addr '(#xFF #xEE #xDD #x00 #x11 #x22)
+;;                               :type :public))
+
+;; TODO: set error name automatically
+(defclass hci-error ()
+  ((code :initarg :code :initform 0)
+   (name :initarg :name :initform "")))
+
+(defmethod encode-binary ((object hci-error))
+  (lists->vector (encode-le 1 (slot-value object 'code))))
+
+;; (encode-binary (make-instance 'hci-error :code 2))
+
 (defclass bt-adv-data ()
   ((len :initarg :len :initform 0)
    (data :initarg :data :initform #())))
 
-(defmethod encode-binary (type (object bt-adv-data))
+(defmethod encode-binary ((object bt-adv-data))
   (lists->vector
     (encode-le 2 (slot-value object 'len))
     (slot-value object 'data)))
 
-(encode-binary 'bt-adv-data
-               (make-instance 'bt-adv-data :len 1650 :data '(1 2 3 #xFF)))
+;; (encode-binary (make-instance 'bt-adv-data :len 1650 :data '(1 2 3 #xFF)))
 
 (defclass bt-conn ()
   ((ptr :initarg :ptr :initform 0)
    (idx :initarg :idx :initform 0)))
 
-(defmethod encode-binary (type (object bt-conn))
+(defmethod encode-binary ((object bt-conn))
   (lists->vector
     (encode-le 4 (slot-value object 'ptr))
     (encode-le 1 (slot-value object 'idx))))
 
-;; (encode-binary 'bt-conn
-;;                (make-instance 'bt-conn :ptr #x2000ffab :idx 1))
+;; (encode-binary (make-instance 'bt-conn :ptr #x2000ffab :idx 1))
 
 (defclass bt-conn-param ()
   ((interval-min :initarg :interval-min :initform 0)
@@ -255,7 +276,7 @@
    (latency :initarg :latency :initform 0)
    (timeout :initarg :timeout :initform 0)))
 
-(defmethod encode-binary (type (object bt-conn-param))
+(defmethod encode-binary ((object bt-conn-param))
   (with-slots (interval-min interval-max latency timeout) object
     (lists->vector
       (encode-le 2 interval-min)
@@ -263,8 +284,7 @@
       (encode-le 2 latency)
       (encode-le 2 timeout))))
 
-;; (encode-binary 'bt-conn-param
-;;                (make-instance 'bt-conn-param
+;; (encode-binary (make-instance 'bt-conn-param
 ;;                               :interval-min 20
 ;;                               :interval-max 3000
 ;;                               :latency 3
@@ -277,7 +297,7 @@
    (subversion :initarg :subversion :initform 0)
    (features :initarg :features :initform 0)))
 
-(defmethod encode-binary (type (object bt-remote-info))
+(defmethod encode-binary ((object bt-remote-info))
   (with-slots (type version manufacturer subversion features) object
      (lists->vector
       (encode-le 1 type)
@@ -286,8 +306,7 @@
       (encode-le 2 subversion)
       (encode-le 1 features))))
 
-;; (encode-binary 'bt-remote-info
-;;                (make-instance 'bt-remote-info
+;; (encode-binary (make-instance 'bt-remote-info
 ;;                               :type #xFE
 ;;                               :version 233
 ;;                               :manufacturer #xabcd
@@ -298,14 +317,13 @@
   ((tx :initarg :tx :initform 0)
    (rx :initarg :rx :initform 0)))
 
-(defmethod encode-binary (type (object bt-phy-info))
+(defmethod encode-binary ((object bt-phy-info))
   (with-slots (tx rx) object
     (lists->vector
      (encode-le 1 tx)
      (encode-le 1 rx))))
 
-;; (encode-binary 'bt-phy-info
-;;                (make-instance 'bt-phy-info
+;; (encode-binary (make-instance 'bt-phy-info
 ;;                               :tx 2
 ;;                               :rx 1))
 
@@ -315,7 +333,7 @@
    (rx-max-len :initarg :rx-max-len :initform 0)
    (rx-max-time :initarg :rx-max-time :initform 0)))
 
-(defmethod encode-binary (type (object bt-data-len-info))
+(defmethod encode-binary ((object bt-data-len-info))
   (with-slots (tx-max-len tx-max-time rx-max-len rx-max-time) object
     (lists->vector
      (encode-le 2 tx-max-len)
@@ -323,8 +341,7 @@
      (encode-le 2 rx-max-len)
      (encode-le 2 rx-max-time))))
 
-;; (encode-binary 'bt-data-len-info
-;;                (make-instance 'bt-data-len-info
+;; (encode-binary (make-instance 'bt-data-len-info
 ;;                               :tx-max-len 266
 ;;                               :rx-max-time #xfeef))
 
@@ -335,18 +352,15 @@
    (remote-setup :initarg :remote-setup :initform (make-instance 'bt-addr))
    (param :initarg :param :initform (make-instance 'bt-conn-param))))
 
-;; (defparameter *test-inst* (make-instance 'bt-conn-le-info))
-
 ;; TODO: use :initform and class-of to autogenerate encode-binary
-;; - also making the `type` param redundant
-(defmethod encode-binary (type (object bt-conn-le-info))
+(defmethod encode-binary ((object bt-conn-le-info))
   (with-slots (local remote local-setup remote-setup param) object
     (concatenate 'vector
-                 (encode-binary 'bt-addr local)
-                 (encode-binary 'bt-addr remote)
-                 (encode-binary 'bt-addr local-setup)
-                 (encode-binary 'bt-addr remote-setup)
-                 (encode-binary 'bt-conn-param param))))
+                 (encode-binary local)
+                 (encode-binary remote)
+                 (encode-binary local-setup)
+                 (encode-binary remote-setup)
+                 (encode-binary param))))
 
 ;; (let ((local-addr
 ;;         (make-instance 'bt-addr
@@ -356,8 +370,7 @@
 ;;                        :addr '(#xab #xcd #xef #x00 #x11 #x22) :type :public))
 ;;       (param
 ;;         (make-instance 'bt-conn-param :interval-max 100 :timeout 10)))
-;;   (encode-binary 'bt-conn-le-info
-;;                  (make-instance 'bt-conn-le-info
+;;   (encode-binary (make-instance 'bt-conn-le-info
 ;;                                 :local local-addr
 ;;                                 :remote (make-instance 'bt-addr )
 ;;                                 :local-setup (make-instance 'bt-addr)
