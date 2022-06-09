@@ -249,13 +249,21 @@ Event parsing:
 return list:
 'event' -> indicates this is an event transfer from the backend
 event name
-name-type-value lists for each param
-- if type names a complex data class:
-  -> list all slots in alphabetical order, e.g.
+plist of (:param-name value)
+- if type of value is a composite type:
+  list of:
+  - type name
+  - plist of slot name+value in declaration order
 
 ``` common-lisp
-(event connected (conn 'conn #x3 #x20001234 0)) ;; 'idx comes before 'mem
-(event something-something-address (addr 'bt-addr '(#x00 #xFF #x33 #x22 #x11) 'public))
+(event connected :conn ('bt-conn (:idx #x3 :mem #x20001234)) :err 0)
+(event scan-device-report
+  (:addr ('bt-addr
+           (:addr #(#x00 #xFF #x33 #x22 #x11)
+            :type 'public))
+   :sid 1
+   :rssi -19
+   :tx-power -1))
 ```
 
 
