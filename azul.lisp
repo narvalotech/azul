@@ -120,8 +120,9 @@
    (type :initarg :type :initform :random)))
 
 ;; Get list of slots
-;; (mapcar #'sb-mop:slot-definition-name
-;;         (sb-mop:class-direct-slots (class-of (make-instance 'bt-addr))))
+(defun get-slot-names (object)
+  (mapcar #'sb-mop:slot-definition-name
+          (sb-mop:class-direct-slots (class-of object))))
 
 ;; (defparameter *test-inst* (make-instance 'bt-addr :addr '(#xFF #xEE #xDD #x00 #x11 #x22) :type :public))
 ;; (format t "~S~%" *test-inst*)
@@ -195,35 +196,46 @@
 (defun lists->vector (&rest lists)
   (coerce (loop for l in lists nconc l) 'vector))
 
-(defmacro generate-encode-binary (int)
-  `(defmethod encode-binary ((object ,int))
-     (lists->vector (encode-le
-                     (slot-value object 'bytes)
-                     (slot-value object 'value)))))
+(defun vector->list (vector)
+  (coerce vector 'list))
 
-(defun make-int (class value)
-  (make-instance class :value value))
+;; Generates encode-binary methods AND convenience fns to make the int classes
+(defmacro generate-encode-binary (int)
+  (let ((fname (read-from-string (concatenate 'string "make-" (string int)))))
+  `(progn
+     (defmethod encode-binary ((object ,int))
+       (lists->vector (encode-le
+                       (slot-value object 'bytes)
+                       (slot-value object 'value))))
+     (defun ,fname (value)
+       (make-instance ',int :value value)))))
+
+(defun make-u8 (value)
+  (make-instance 'u8 :value value))
 
 (defclass u8 ()
   ((value :initarg :value :initform 0)
    (bytes :initarg :bytes :initform 1)))
 
 (generate-encode-binary u8)
-(encode-binary (make-int 'u8 123))
+(encode-binary (make-u8 123))
 
 (defclass i8 ()
   ((value :initarg :value :initform 0)
    (bytes :initarg :bytes :initform 1)))
 
 (generate-encode-binary i8)
-(encode-binary (make-int 'i8 -10))
+(encode-binary (make-i8 -10))
 
 (defclass u16 ()
   ((value :initarg :value :initform 0)
    (bytes :initarg :bytes :initform 2)))
 
 (generate-encode-binary u16)
-(encode-binary (make-int 'u16 #xffab))
+(encode-binary (make-u16 #xffab))
+
+(defmethod encode-binary ((object cons))
+  (lists->vector object))
 
 (defparameter *bt-addr-types* '(:public 2
                                 :random 3))
@@ -250,14 +262,21 @@
 
 (defclass bt-adv-data ()
   ((len :initarg :len :initform 0)
-   (data :initarg :data :initform #())))
+   (data :initarg :data :initform 0)))
 
 (defmethod encode-binary ((object bt-adv-data))
   (lists->vector
     (encode-le 2 (slot-value object 'len))
     (slot-value object 'data)))
 
-;; (encode-binary (make-instance 'bt-adv-data :len 1650 :data '(1 2 3 #xFF)))
+;; (defparameter *test-inst* (make-instance 'bt-adv-data :len (make-u16 1650) :data '(1 2 3 #xFF)))
+
+;; Ideas for auto-generating the encoder:
+;; might still need custom ones for types which don't encode all their
+;; slots, e.g. hci-error.
+;; (loop for slot in (get-slot-names *test-inst*)
+;;       nconc (vector->list
+;;              (encode-binary (slot-value *test-inst* slot))))
 
 (defclass bt-conn ()
   ((ptr :initarg :ptr :initform 0)
