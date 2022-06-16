@@ -119,6 +119,9 @@
   ((addr :initarg :addr :initform '(00 00 00 00 00 00))
    (type :initarg :type :initform :random)))
 
+(defmethod get-size ((type (eql 'bt-addr)))
+  7)
+
 ;; Get list of slots
 (defun get-slot-names (object)
   (mapcar #'sb-mop:slot-definition-name
@@ -189,9 +192,26 @@
   (:documentation "Encode a given object into binary.")
   (:method (value) (format nil "No encode method defined for given type: ~a." (type-of object))))
 
+(defgeneric decode-binary (raw type)
+  (:documentation "Decode a raw binary stream into an object of `type`")
+  (:method (raw type) (format nil "No decode method defined for given type: ~a." type)))
+
+(defgeneric get-size (type)
+  (:documentation "Return size in bytes of given type.")
+  (:method (type) (format nil "No size method defined for given type: ~a." type)))
+
 (defun encode-le (bytes value)
    (loop for byte from 0 to (1- bytes) collect
          (ldb (byte 8 (* 8 byte)) value)))
+
+(defun decode-le (bytes raw)
+  (let ((raw (coerce raw 'list)))
+    (loop for i from 0 to (1- bytes)
+          summing (ash (nth i raw) (* i 8)))))
+
+;; Should ignore anything after required bytes
+;; (decode-le 2 '(114 6 1 3 4))
+;; (decode-le 2 #(114 6))
 
 (defun lists->vector (&rest lists)
   (coerce (loop for l in lists nconc l) 'vector))
@@ -207,6 +227,10 @@
        (lists->vector (encode-le
                        (slot-value object 'bytes)
                        (slot-value object 'value))))
+     (defmethod decode-binary (raw (type (eql ',int)))
+       (decode-le (get-size ',int) raw))
+     (defmethod get-size ((type (eql ',int)))
+       (slot-value (make-instance ',int) 'bytes))
      (defun ,fname (value)
        (make-instance ',int :value value)))))
 
@@ -240,17 +264,34 @@
 (defparameter *bt-addr-types* '(:public 2
                                 :random 3))
 
+(defun get-enum-name (number enum)
+  (loop for el in (cdr enum)
+        counting t into i
+        when (equal el number) do (return (nth (- i 1) enum))
+        finally (return nil)))
+
+;; (get-enum-name 3 *bt-addr-types*)
+
 (defmethod encode-binary ((object bt-addr))
   (with-slots (addr type) object
     (concatenate 'vector
                  (lists->vector addr)
                  (encode-le 1 (getf *bt-addr-types* type)))))
 
-;; (encode-binary (make-instance 'bt-addr
-;;                               :addr '(#xFF #xEE #xDD #x00 #x11 #x22)
-;;                               :type :public))
+(defmethod decode-binary (raw (type (eql 'bt-addr)))
+  (setf raw (vector->list raw))
+  (make-instance type
+                 :addr (subseq raw 0 6)
+                 :type (get-enum-name
+                        (decode-le 1 (subseq raw 6)) *bt-addr-types*)))
 
-;; TODO: set error name automatically
+;; (defparameter *test-addr*
+;;   (decode-binary
+;;    (encode-binary (make-instance 'bt-addr
+;;                                  :addr '(#xFF #xEE #xDD #x00 #x11 #x22)
+;;                                  :type :public)) 'bt-addr))
+
+;; TODO: set error name (or code) automatically
 (defclass hci-error ()
   ((code :initarg :code :initform 0)
    (name :initarg :name :initform "")))
@@ -258,7 +299,11 @@
 (defmethod encode-binary ((object hci-error))
   (lists->vector (encode-le 1 (slot-value object 'code))))
 
-;; (encode-binary (make-instance 'hci-error :code 2))
+(defmethod decode-binary (raw (type (eql 'hci-error)))
+  (make-instance type :code (decode-le 1 raw)))
+
+;; (defparameter *test-inst*
+;;   (decode-binary (encode-binary (make-instance 'hci-error :code 2)) 'hci-error))
 
 (defclass bt-adv-data ()
   ((len :initarg :len :initform 0)
@@ -269,7 +314,19 @@
     (encode-le 2 (slot-value object 'len))
     (slot-value object 'data)))
 
-;; (defparameter *test-inst* (make-instance 'bt-adv-data :len (make-u16 1650) :data '(1 2 3 #xFF)))
+(defmethod decode-binary (raw (type (eql 'bt-adv-data)))
+  (let ((len (decode-le 2 raw)))
+    (make-instance type
+                   :len len
+                   :data (subseq raw 2 (+ 2 len)))))
+
+;; (defparameter *test-inst* (make-instance 'bt-adv-data :len 1650 :data '(1 2 3 #xFF)))
+
+;; (defparameter *test-inst*
+;;   (decode-binary
+;;    (encode-binary
+;;     (make-instance 'bt-adv-data :len 3 :data '(1 2 3 #xFF)))
+;;    'bt-adv-data))
 
 ;; Ideas for auto-generating the encoder:
 ;; might still need custom ones for types which don't encode all their
@@ -287,7 +344,13 @@
     (encode-le 4 (slot-value object 'ptr))
     (encode-le 1 (slot-value object 'idx))))
 
-;; (encode-binary (make-instance 'bt-conn :ptr #x2000ffab :idx 1))
+(defmethod decode-binary (raw (type (eql 'bt-conn)))
+  (make-instance type
+                 :ptr (decode-le 4 raw)
+                 :idx (decode-le 1 (subseq raw 4))))
+
+;; (defparameter *test-inst*
+;;   (decode-binary (encode-binary (make-instance 'bt-conn :ptr #x2000ffab :idx 1)) 'bt-conn))
 
 (defclass bt-conn-param ()
   ((interval-min :initarg :interval-min :initform 0)
@@ -303,11 +366,21 @@
       (encode-le 2 latency)
       (encode-le 2 timeout))))
 
-;; (encode-binary (make-instance 'bt-conn-param
-;;                               :interval-min 20
-;;                               :interval-max 3000
-;;                               :latency 3
-;;                               :timeout 4000))
+;; TODO: make `push-le` and `pull-le` methods so we don't have to use subseq
+(defmethod decode-binary (raw (type (eql 'bt-conn-param)))
+  (make-instance type
+                 :interval-min (decode-le 2 raw)
+                 :interval-max (decode-le 2 (subseq raw 2))
+                 :latency (decode-le 2 (subseq raw 4))
+                 :timeout (decode-le 2 (subseq raw 6))))
+
+;; (defparameter *test-inst*
+;;   (decode-binary
+;;    (encode-binary (make-instance 'bt-conn-param
+;;                                  :interval-min 20
+;;                                  :interval-max 3000
+;;                                  :latency 3
+;;                                  :timeout 4000)) 'bt-conn-param))
 
 (defclass bt-remote-info ()
   ((type :initarg :type :initform 0)
@@ -325,12 +398,21 @@
       (encode-le 2 subversion)
       (encode-le 1 features))))
 
-;; (encode-binary (make-instance 'bt-remote-info
-;;                               :type #xFE
-;;                               :version 233
-;;                               :manufacturer #xabcd
-;;                               :subversion #x1234
-;;                               :features 3))
+(defmethod decode-binary (raw (type (eql 'bt-remote-info)))
+  (make-instance type
+                 :type (decode-le 1 raw)
+                 :version (decode-le 1 (subseq raw 1))
+                 :manufacturer (decode-le 2 (subseq raw 2))
+                 :subversion (decode-le 2 (subseq raw 4))
+                 :features (decode-le 1 (subseq raw 6))))
+
+;; (defparameter *test-inst*
+;;   (decode-binary (encode-binary (make-instance 'bt-remote-info
+;;                                 :type #xFE
+;;                                 :version 233
+;;                                 :manufacturer #xabcd
+;;                                 :subversion #x1234
+;;                                 :features 3)) 'bt-remote-info))
 
 (defclass bt-phy-info ()
   ((tx :initarg :tx :initform 0)
@@ -342,9 +424,15 @@
      (encode-le 1 tx)
      (encode-le 1 rx))))
 
-;; (encode-binary (make-instance 'bt-phy-info
-;;                               :tx 2
-;;                               :rx 1))
+(defmethod decode-binary (raw (type (eql 'bt-phy-info)))
+  (make-instance type
+                 :tx (decode-le 1 raw)
+                 :rx (decode-le 1 (subseq raw 1))))
+
+;; (defparameter *test-inst*
+;;   (decode-binary (encode-binary (make-instance 'bt-phy-info
+;;                                                :tx 2
+;;                                                :rx 1)) 'bt-phy-info))
 
 (defclass bt-data-len-info ()
   ((tx-max-len :initarg :tx-max-len :initform 0)
@@ -360,9 +448,17 @@
      (encode-le 2 rx-max-len)
      (encode-le 2 rx-max-time))))
 
-;; (encode-binary (make-instance 'bt-data-len-info
-;;                               :tx-max-len 266
-;;                               :rx-max-time #xfeef))
+(defmethod decode-binary (raw (type (eql 'bt-data-len-info)))
+  (make-instance type
+                 :tx-max-len (decode-le 2 raw)
+                 :tx-max-time (decode-le 2 (subseq raw 2))
+                 :rx-max-len (decode-le 2 (subseq raw 4))
+                 :rx-max-time (decode-le 2 (subseq raw 6))))
+
+;; (defparameter *test-inst*
+;;   (decode-binary (encode-binary (make-instance 'bt-data-len-info
+;;                                                :tx-max-len 266
+;;                                                :rx-max-time #xfeef)) 'bt-data-len-info))
 
 (defclass bt-conn-le-info ()
   ((local :initarg :local :initform (make-instance 'bt-addr))
@@ -381,17 +477,28 @@
                  (encode-binary remote-setup)
                  (encode-binary param))))
 
-;; (let ((local-addr
-;;         (make-instance 'bt-addr
-;;                        :addr '(#xFF #xEE #xDD #x00 #x11 #x22) :type :public))
-;;       (remote-addr
-;;         (make-instance 'bt-addr
-;;                        :addr '(#xab #xcd #xef #x00 #x11 #x22) :type :public))
-;;       (param
-;;         (make-instance 'bt-conn-param :interval-max 100 :timeout 10)))
-;;   (encode-binary (make-instance 'bt-conn-le-info
-;;                                 :local local-addr
-;;                                 :remote (make-instance 'bt-addr )
-;;                                 :local-setup (make-instance 'bt-addr)
-;;                                 :remote-setup remote-addr
-;;                                 :param param)))
+(defmethod decode-binary (raw (type (eql 'bt-conn-le-info)))
+  (make-instance type
+                 :local (decode-binary raw 'bt-addr)
+                 :remote (decode-binary (subseq raw (get-size 'bt-addr)) 'bt-addr)
+                 :local-setup (decode-binary (subseq raw (* 2 (get-size 'bt-addr))) 'bt-addr)
+                 :remote-setup (decode-binary (subseq raw (* 3 (get-size 'bt-addr))) 'bt-addr)
+                 :param (decode-binary (subseq raw (* 4 (get-size 'bt-addr))) 'bt-conn-param)))
+
+;; (defparameter *test-inst*
+;;   (decode-binary
+;;    (let ((local-addr
+;;            (make-instance 'bt-addr
+;;                           :addr '(#xFF #xEE #xDD #x00 #x11 #x22) :type :public))
+;;          (remote-addr
+;;            (make-instance 'bt-addr
+;;                           :addr '(#xab #xcd #xef #x00 #x11 #x22) :type :public))
+;;          (param
+;;            (make-instance 'bt-conn-param :interval-max 100 :timeout 10)))
+;;      (encode-binary (make-instance 'bt-conn-le-info
+;;                                    :local local-addr
+;;                                    :remote (make-instance 'bt-addr )
+;;                                    :local-setup (make-instance 'bt-addr)
+;;                                    :remote-setup remote-addr
+;;                                    :param param)))
+;;    'bt-conn-le-info))
