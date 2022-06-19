@@ -174,7 +174,7 @@
 
 ;; Can use netcat to talk to it:
 ;; nc 127.0.0.1 42069
-(create-server-and-listen 42069)
+;; (create-server-and-listen 42069)
 
 (defun create-client (port)
   (usocket:with-client-socket (socket stream "127.0.0.1" port :element-type 'character)
@@ -184,7 +184,7 @@
         (force-output stream))
       )))
 
-(create-client 42069)
+;; (create-client 42069)
 
 ;; Binary packing
 ;; Returns a byte array / vector
