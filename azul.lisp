@@ -502,3 +502,50 @@
 ;;                                    :remote-setup remote-addr
 ;;                                    :param param)))
 ;;    'bt-conn-le-info))
+
+;; Try to generate the encoders and decoders automatically
+;;
+(defun make-bin-slot (name type &key (init 0) (no-encode nil))
+  (declare (ignore type no-encode))
+  `(,name :initarg ,(prepend-to-symbol ":" name) :initform ,init))
+
+(defun make-encode-slot (obj name type &key (init 0) (no-encode nil))
+  (declare (ignore type init))
+  (if no-encode nil
+      `(encode-binary (slot-value ,obj ,(prepend-to-symbol "'" name)))))
+
+(defun make-decode-slot (name type &key (init 0) (no-encode nil))
+  (declare (ignore init))
+  (if no-encode
+      `(,(prepend-to-symbol ":" name) nil)
+      `(,(prepend-to-symbol ":" name) (decode-binary raw ,(prepend-to-symbol "'" type)))))
+
+(defmacro make-binary-class (name &rest slots)
+  `(progn
+
+    (defclass ,name ()
+     ,(loop for s in slots
+            collect (apply #'make-bin-slot s)))
+
+    (defmethod encode-binary ((object ,name))
+      (concatenate 'vector
+                   ,@(loop for s in slots
+                           collect (apply #'make-encode-slot 'object s))))
+
+    (defmethod decode-binary (raw (type (eql ,(prepend-to-symbol "'" name))))
+      (make-instance type
+                     ,@(loop for s in slots
+                             nconc (apply #'make-decode-slot s))))
+
+    ))
+
+;; (macroexpand-1
+;;  '(make-binary-class
+;;    hci-error
+;;    (code u8 :init 0)
+;;    (name simple-array :init "" :no-encode t)))
+
+;; (make-binary-class
+;;    hci-error
+;;    (code u8 :init 0)
+;;    (name simple-array :init "" :no-encode t))
