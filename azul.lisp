@@ -209,6 +209,28 @@
     (loop for i from 0 to (1- bytes)
           summing (ash (nth i raw) (* i 8)))))
 
+;; Same as decode-le, but removes decoded part from passed vector
+(defmacro pull-le (bytes raw)
+  `(let ((result))
+     (progn
+       (setf result (decode-le ,bytes ,raw))
+       (setf ,raw (subseq ,raw ,bytes))
+       result)))
+
+;; (defparameter *test* #(1 2 3 4 5 6))
+;; (macroexpand-1 '(pull-le 2 *test*))
+;; (pull-le 2 *test*)
+;; (print *test*)
+
+;; Ditto but for decode-binary
+(defmacro pull-binary (raw type)
+  `(let ((result))
+     (progn
+       (setf result (decode-binary ,raw ,type))
+       (setf ,raw (subseq ,raw (get-size ,type)))
+       result)))
+
+
 ;; Should ignore anything after required bytes
 ;; (decode-le 2 '(114 6 1 3 4))
 ;; (decode-le 2 #(114 6))
@@ -346,8 +368,8 @@
 
 (defmethod decode-binary (raw (type (eql 'bt-conn)))
   (make-instance type
-                 :ptr (decode-le 4 raw)
-                 :idx (decode-le 1 (subseq raw 4))))
+                 :ptr (pull-le 4 raw)
+                 :idx (pull-le 1 raw)))
 
 ;; (defparameter *test-inst*
 ;;   (decode-binary (encode-binary (make-instance 'bt-conn :ptr #x2000ffab :idx 1)) 'bt-conn))
@@ -366,13 +388,15 @@
       (encode-le 2 latency)
       (encode-le 2 timeout))))
 
-;; TODO: make `push-le` and `pull-le` methods so we don't have to use subseq
 (defmethod decode-binary (raw (type (eql 'bt-conn-param)))
   (make-instance type
-                 :interval-min (decode-le 2 raw)
-                 :interval-max (decode-le 2 (subseq raw 2))
-                 :latency (decode-le 2 (subseq raw 4))
-                 :timeout (decode-le 2 (subseq raw 6))))
+                 :interval-min (pull-le 2 raw)
+                 :interval-max (pull-le 2 raw)
+                 :latency (pull-le 2 raw)
+                 :timeout (pull-le 2 raw)))
+
+(defmethod get-size ((type (eql 'bt-conn-param)))
+  8)
 
 ;; (defparameter *test-inst*
 ;;   (decode-binary
@@ -400,11 +424,11 @@
 
 (defmethod decode-binary (raw (type (eql 'bt-remote-info)))
   (make-instance type
-                 :type (decode-le 1 raw)
-                 :version (decode-le 1 (subseq raw 1))
-                 :manufacturer (decode-le 2 (subseq raw 2))
-                 :subversion (decode-le 2 (subseq raw 4))
-                 :features (decode-le 1 (subseq raw 6))))
+                 :type (pull-le 1 raw)
+                 :version (pull-le 1 raw)
+                 :manufacturer (pull-le 2 raw)
+                 :subversion (pull-le 2 raw)
+                 :features (pull-le 1 raw)))
 
 ;; (defparameter *test-inst*
 ;;   (decode-binary (encode-binary (make-instance 'bt-remote-info
@@ -426,8 +450,8 @@
 
 (defmethod decode-binary (raw (type (eql 'bt-phy-info)))
   (make-instance type
-                 :tx (decode-le 1 raw)
-                 :rx (decode-le 1 (subseq raw 1))))
+                 :tx (pull-le 1 raw)
+                 :rx (pull-le 1 raw)))
 
 ;; (defparameter *test-inst*
 ;;   (decode-binary (encode-binary (make-instance 'bt-phy-info
@@ -450,10 +474,10 @@
 
 (defmethod decode-binary (raw (type (eql 'bt-data-len-info)))
   (make-instance type
-                 :tx-max-len (decode-le 2 raw)
-                 :tx-max-time (decode-le 2 (subseq raw 2))
-                 :rx-max-len (decode-le 2 (subseq raw 4))
-                 :rx-max-time (decode-le 2 (subseq raw 6))))
+                 :tx-max-len (pull-le 2 raw)
+                 :tx-max-time (pull-le 2 raw)
+                 :rx-max-len (pull-le 2 raw)
+                 :rx-max-time (pull-le 2 raw)))
 
 ;; (defparameter *test-inst*
 ;;   (decode-binary (encode-binary (make-instance 'bt-data-len-info
@@ -479,11 +503,11 @@
 
 (defmethod decode-binary (raw (type (eql 'bt-conn-le-info)))
   (make-instance type
-                 :local (decode-binary raw 'bt-addr)
-                 :remote (decode-binary (subseq raw (get-size 'bt-addr)) 'bt-addr)
-                 :local-setup (decode-binary (subseq raw (* 2 (get-size 'bt-addr))) 'bt-addr)
-                 :remote-setup (decode-binary (subseq raw (* 3 (get-size 'bt-addr))) 'bt-addr)
-                 :param (decode-binary (subseq raw (* 4 (get-size 'bt-addr))) 'bt-conn-param)))
+                 :local (pull-binary raw 'bt-addr)
+                 :remote (pull-binary raw 'bt-addr)
+                 :local-setup (pull-binary raw 'bt-addr)
+                 :remote-setup (pull-binary raw 'bt-addr)
+                 :param (pull-binary raw 'bt-conn-param)))
 
 ;; (defparameter *test-inst*
 ;;   (decode-binary
