@@ -190,7 +190,7 @@
 ;; Returns a byte array / vector
 (defgeneric encode-binary (object)
   (:documentation "Encode a given object into binary.")
-  (:method (value) (format nil "No encode method defined for given type: ~a." (type-of object))))
+  (:method (value) (format nil "No encode method defined for given type: ~a." (type-of value))))
 
 (defgeneric decode-binary (raw type)
   (:documentation "Decode a raw binary stream into an object of `type`")
