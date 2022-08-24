@@ -44,8 +44,15 @@
 (register-bt-generics
  *fn-list*
  (
+  ;; Identities
+  (id-create (&key bt-addr) "Create an identity.")
+  (id-list () "List identities.")
+
+  ;; Advertising
+  (advertise () "Start legacy advertising")
+
   ;; Scan
-  (scan (type &key filters filter-accept-list) "Scan for BLE devices.")
+  (scan (type) "Scan for BLE devices.")
   (scan-filter-set (filter) "Set a scan filter (e.g. name, addr, rssi).")
   (scan-filter-clear () "Clear all scan filters.")
 
@@ -115,6 +122,23 @@
 (defclass zephyr-host () nil)
 (defparameter *backend-inst* (make-instance 'zephyr-host))
 
+(defun serialize-command (opcode &optional data)
+  (concatenate 'vector
+               ;; Magic value for commands
+               #(#xab)
+               (vector (get-idx-by-name *fn-list* opcode))
+               data))
+
+(defun print-hex (vec)
+  (format nil "~{~A~}"
+          (map 'list
+               (lambda (a) (format nil "~2,'0X " a))
+               vec)))
+
+(defun dispatch-serial (encoded)
+  ;; TODO: send over real serial
+  (format t "TX: ~a~%" (print-hex encoded)))
+
 (defclass bt-addr ()
   ((addr :initarg :addr :initform '(00 00 00 00 00 00))
    (type :initarg :type :initform :random)))
@@ -132,17 +156,6 @@
 ;; (with-slots (addr type) *test-inst*
 ;;   (print addr)
 ;;   (print type))
-
-(defmethod bt-id-create ((type zephyr-host) &key bt-addr)
-  ;; TODO: serialize into 'serial' buffer
-  (format t "id-create [~a] ~a~%"
-          (get-idx-by-name *fn-list* 'bt-id-create)
-          bt-addr))
-
-(defmethod bt-id-list ((type zephyr-host))
-  (format t "bt-id-list executed~%"))
-
-;; (bt-id-create *backend-inst* :bt-addr "randomaddress")
 
 ;; For now only supports s-exps on a single line
 (defun parse-command (str)
@@ -573,3 +586,33 @@
 ;;    hci-error
 ;;    (code u8 :init 0)
 ;;    (name simple-array :init "" :no-encode t))
+
+;; Command serializers
+;; #####################################################
+(defmethod bt-id-create ((backend zephyr-host) &key bt-addr)
+  (dispatch-serial
+   (serialize-command
+    'bt-id-create (encode-binary bt-addr))))
+
+;; (bt-id-create *backend-inst*
+;;               :bt-addr
+;;               (make-instance
+;;                'bt-addr
+;;                :addr '(#xFF #xEE #xDD #x00 #x11 #x22)
+;;                :type :public))
+
+(defmethod bt-id-list ((backend zephyr-host))
+  (dispatch-serial (serialize-command 'bt-id-list)))
+
+;; (bt-id-list *backend-inst*)
+
+(defmethod bt-scan ((backend zephyr-host) type)
+  (dispatch-serial
+   (serialize-command 'bt-scan (encode-binary type))))
+
+;; (bt-scan *backend-inst* (make-u8 #x33))
+
+(defmethod bt-advertise ((backend zephyr-host))
+  (dispatch-serial (serialize-command 'bt-advertise)))
+
+(bt-advertise *backend-inst*)
