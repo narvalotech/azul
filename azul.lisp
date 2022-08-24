@@ -135,9 +135,19 @@
                (lambda (a) (format nil "~2,'0X " a))
                vec)))
 
+(defun make-header (packet)
+  (concatenate 'vector
+               (map 'list (lambda (c) (char-code c)) "RPC")
+               (vector (logand (length packet) #xFFFF))
+               #(0) ; Don't care about CRC for now
+               ))
+
 (defun dispatch-serial (encoded)
-  ;; TODO: send over real serial
-  (format t "TX: ~a~%" (print-hex encoded)))
+  ;; TODO: send over socket serial
+  (format t "TX: ~a~%" (print-hex
+                        (concatenate 'vector
+                                     (make-header encoded)
+                                     encoded))))
 
 (defclass bt-addr ()
   ((addr :initarg :addr :initform '(00 00 00 00 00 00))

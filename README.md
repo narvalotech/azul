@@ -158,6 +158,27 @@ Backend main loop:
   - sends s-exp on `socket-backend`:
     - format: (event event-paramlist)
 
+Serialized packet format
+```
+| HEADER 'RPC' [u8 * 3] | LEN [u16] | CRC [u8] | PACKET-TYPE [u8] | OPCODE [u8] | DATA [u8 * (LEN-2)] |
+```
+Sequence diagram
+```
+title advertising command
+
+GUI -> backend: advertise()
+
+box over backend: encode: [AB 02]
+box over backend: add header: 'RPC', len, crc
+backend -> serial: 52 50 43 02 00 AB 02
+
+serial -> device: 52 50 43 02 00 AB 02
+box over device: decode command type
+box over device: dispatch command + args
+
+device -> bt-host: bt_le_advertise()
+```
+
 Proof of concept:
 - Scan & display adv reports in list
   - commands:
